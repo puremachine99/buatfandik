@@ -52,7 +52,7 @@ saya carissa dari bank BTN, konfirmasi mengenai tunggakan angsuran KPR nya sebes
 - **AI Task:** Setup `server.js` (Express) di _root directory_. Integrasikan Next.js handler ke dalam Express. Set up HTTP Server dan pasang `Socket.io` di atasnya.
 - **Rule:** Jangan gunakan standard `next dev` atau API Routes (`/api/...`) untuk _logic_ WhatsApp. Semua _logic_ WA dan _Socket emission_ harus berjalan di dalam `server.js`.
 
-### Phase 2: Database & Drizzle Setup
+### Phase 2: Database & Drizzle Setup (DONE)
 
 - **AI Task:** Inisialisasi koneksi PostgreSQL dan buat skema Drizzle sesuai definisi di atas. Buat _migration script_.
 - **Rule:** Gunakan `drizzle-kit` untuk mengelola _schema_ dan _migrations_.
@@ -64,7 +64,7 @@ saya carissa dari bank BTN, konfirmasi mengenai tunggakan angsuran KPR nya sebes
   - _Listen_ ke event `qr` dari `whatsapp-web.js`, lalu _emit_ menggunakan Socket.io ke _client_.
   - _Listen_ ke event `ready` dan `disconnected`, lalu sinkronkan _state_ ke _client_.
 
-### Phase 4: Frontend Dashboard & Data Upload
+### Phase 4: Frontend Dashboard & Data Upload (UI DONE)
 
 - **AI Task:** Buat halaman Dashboard menggunakan Next.js App Router.
   - Buat komponen untuk menampilkan QR Code dari Socket.io.

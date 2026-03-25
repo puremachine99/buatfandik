@@ -33,14 +33,14 @@ Aplikasi akan memiliki struktur navigasi yang sederhana dan fokus pada fungsiona
 
 Berikut adalah urutan pengerjaan untuk frontend:
 
-- [ ] **Step 1: Inisialisasi Proyek & UI Library**
-  - [ ] Setup Next.js App Router (Jalankan `create-next-app`).
-  - [ ] Install Tailwind CSS & konfigurasi awal.
-  - [ ] Install Shadcn UI CLI dan inisialisasi komponen dasar (Button, Card, Table, Input).
+- [x] **Step 1: Inisialisasi Proyek & UI Library**
+  - [x] Setup Next.js App Router (Jalankan `create-next-app`).
+  - [x] Install Tailwind CSS & konfigurasi awal.
+  - [x] Install Shadcn UI CLI dan inisialisasi komponen dasar (Button, Card, Table, Input).
 
-- [ ] **Step 2: Setup Layout & Navigation**
-  - [ ] Buat komponen Sidebar/Navbar untuk navigasi antar halaman utama (Dashboard, Data Debitur, Logs).
-  - [ ] Buat kerangka halaman (_Page skeleton_) untuk rute `/`, `/debitur`, dan `/logs`.
+- [x] **Step 2: Setup Layout & Navigation**
+  - [x] Buat komponen Sidebar/Navbar untuk navigasi antar halaman utama (Dashboard, Data Debitur, Logs).
+  - [x] Buat kerangka halaman (_Page skeleton_) untuk rute `/`, `/debitur`, dan `/logs`.
 
 - [ ] **Step 3: Implementasi Socket.io Client**
   - [ ] Install package `socket.io-client`.
@@ -52,16 +52,15 @@ Berikut adalah urutan pengerjaan untuk frontend:
   - [ ] Implementasi listen event `qr` dari Socket, lalu render gambar QR Code menggunakan library `qrcode.react`.
   - [ ] Implementasi listen event `ready` dan `disconnected` untuk mengubah text status UI (Terkoneksi/Terputus).
 
-- [ ] **Step 5: Fitur Upload & Parsing Data (Halaman `/debitur`)**
-  - [ ] Buat komponen Dropzone/File Input yang ramah pengguna.
+- [x] **Step 5: Fitur Tambah & Upload (Halaman `/debitur` UI)**
+  - [x] Buat komponen Form "Tambah Manual" dan Dropzone Upload UI.
   - [ ] Install library bantu (seperti `papaparse` / `xlsx`) untuk ekstrak data CSV/Excel dari sisi client-side.
-  - [ ] Buat validasi format data sebelum disubmit (terutama mematikan spasi dan prefix menjadi format WA 628xxx).
   - [ ] Buat fungsi untuk mengirim data hasil parsing tersanitasi ke server backend.
 
-- [ ] **Step 6: Tabel Data Debitur & Status Real-time (Halaman `/debitur`)**
-  - [ ] Buat UI Tabel menggunakan Shadcn Table untuk menampilkan data sheet debitur.
-  - [ ] Buat logic fetch data dari Server Actions/API (fetch list `debiturs`).
-  - [ ] Tambahkan kolom visual menampilkan status Broadcast terkini (`PENDING`, `SENT`, `FAILED`).
+- [x] **Step 6: Tabel Data Debitur & Status Real-time (Halaman `/debitur` UI)**
+  - [x] Buat UI Tabel interaktif dengan *pagination*, *searching*, dan aksi (Edit/Delete).
+  - [ ] Buat logic fetch/insert data dari Server Actions/API ke Database.
+  - [x] Tambahkan kolom visual menampilkan status Broadcast terkini (`PENDING`, `SENT`, `FAILED`).
 
 - [ ] **Step 7: Tombol "Mulai Broadcast" & Progress Feedback**
   - [ ] Tambahkan tombol aksi "Mulai Broadcast" di halaman `/debitur`.
