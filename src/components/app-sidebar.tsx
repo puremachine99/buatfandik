@@ -68,20 +68,22 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
-        <div
-          className="select-none pointer-events-none px-4 py-3 text-center"
-          aria-hidden="true"
+        <a
+          href="https://wa.me/6289672301013"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block px-4 py-3 text-center transition-colors hover:bg-accent group"
         >
-          <p className="text-[10px] text-muted-foreground/60 font-medium tracking-wide">
+          <p className="text-[10px] text-muted-foreground/60 font-medium tracking-wide group-hover:text-muted-foreground">
             © 2026{" "}
             <span className="font-semibold text-muted-foreground/80">
               Nono Komputer
             </span>
           </p>
           <p className="text-[9px] text-muted-foreground/40 mt-0.5">
-            All rights reserved
+            Hubungi via WhatsApp
           </p>
-        </div>
+        </a>
       </SidebarFooter>
     </Sidebar>
   );
