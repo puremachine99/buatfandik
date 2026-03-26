@@ -69,6 +69,19 @@ export async function deleteDebitur(id: string) {
   }
 }
 
+export async function bulkDeleteDebiturs(ids: string[]) {
+  try {
+    const { inArray } = await import("drizzle-orm");
+    await db.delete(debiturs).where(inArray(debiturs.id, ids));
+    revalidatePath("/debitur");
+    revalidatePath("/broadcast");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error bulk deleting debiturs:", error);
+    return { success: false, error: error.message || "Gagal menghapus data secara massal" };
+  }
+}
+
 export async function bulkAddDebiturs(dataArray: any[]) {
   try {
     const values = dataArray.map(data => ({

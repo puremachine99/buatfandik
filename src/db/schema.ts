@@ -23,3 +23,11 @@ export const broadcastLogs = pgTable('broadcast_logs', {
   created_at: timestamp('created_at').defaultNow().notNull(),
   sent_at: timestamp('sent_at'),
 });
+
+export const messageTemplates = pgTable('message_templates', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  purpose: varchar('purpose', { length: 255 }).notNull().unique(),
+  template: text('template').notNull(),
+  created_at: timestamp('created_at').defaultNow().notNull(),
+  updated_at: timestamp('updated_at').defaultNow().notNull(),
+});

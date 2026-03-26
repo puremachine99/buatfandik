@@ -16,7 +16,8 @@ import {
   Timer,
   Save,
   Smartphone,
-  QrCode
+  QrCode,
+  Loader2
 } from "lucide-react";
 
 import {
@@ -43,6 +44,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getDebiturs } from "@/app/actions/debitur.actions";
 import { getBroadcastLogs, addBroadcastLogs, updateLogStatus } from "@/app/actions/broadcast.actions";
+import { getMessageTemplates, upsertMessageTemplate } from "@/app/actions/template.actions";
 import { useWhatsappSocket } from "@/hooks/use-whatsapp-socket";
 import { toast } from "sonner";
 
@@ -87,12 +89,53 @@ export default function BroadcastPage() {
       setIsLoading(false);
     });
     fetchLogs();
+    fetchTemplates();
   }, []);
 
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
-  const [messageTemplate, setMessageTemplate] = useState(
-    "Selamat pagi bapak/ibu {{nama}}\nAlamat agunan: {{agunan}}\n\nKami dari Bank BTN menginformasikan bahwa terdapat tunggakan sebesar Rp {{tgk}}. Mohon segera melakukan pembayaran.",
-  );
+
+  // Template & Draft States
+  const DEFAULT_TEMPLATE = "Selamat pagi bapak/ibu {{nama}}\nAlamat agunan: {{agunan}}\n\nKami dari Bank BTN menginformasikan bahwa terdapat tunggakan sebesar Rp {{tgk}}. Mohon segera melakukan pembayaran.";
+  const [messageTemplate, setMessageTemplate] = useState(DEFAULT_TEMPLATE);
+  const [templatePurpose, setTemplatePurpose] = useState("Tagihan Default");
+  const [savedDrafts, setSavedDrafts] = useState<{ id?: string; purpose: string; template: string }[]>([]);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+
+  const fetchTemplates = async () => {
+    const res = await getMessageTemplates();
+    if (res.success && res.data && res.data.length > 0) {
+      const mapped = res.data.map(t => ({ id: t.id, purpose: t.purpose, template: t.template }));
+      setSavedDrafts(mapped);
+      // Auto-load the most recently updated template
+      setTemplatePurpose(mapped[0].purpose);
+      setMessageTemplate(mapped[0].template);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    if (!templatePurpose.trim()) {
+      toast.warning("Masukkan judul/purpose template terlebih dahulu.");
+      return;
+    }
+    setIsSavingDraft(true);
+    const res = await upsertMessageTemplate(templatePurpose.trim(), messageTemplate);
+    if (res.success) {
+      toast.success(`Template "${templatePurpose}" berhasil disimpan ke database!`);
+      await fetchTemplates();
+    } else {
+      toast.error(res.error || "Gagal menyimpan template.");
+    }
+    setIsSavingDraft(false);
+  };
+
+  const handleLoadDraft = (purpose: string) => {
+    const draft = savedDrafts.find(d => d.purpose === purpose);
+    if (draft) {
+      setTemplatePurpose(draft.purpose);
+      setMessageTemplate(draft.template);
+    }
+  };
+
   const [newTag, setNewTag] = useState("");
   const [tagTargetId, setTagTargetId] = useState<string | null>(null);
   const [isQROpen, setIsQROpen] = useState(false);
@@ -167,7 +210,7 @@ export default function BroadcastPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in duration-500">
+    <div className="flex flex-col gap-6 animate-in fade-in duration-500 h-[calc(100vh-2rem)] overflow-hidden">
       {/* HEADER & INFO BOT */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -206,19 +249,43 @@ export default function BroadcastPage() {
       </div>
 
       {/* TWO COLUMN LAYOUT */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0">
         {/* KOLOM PERTAMA (Kiri) - Row 1 & Row 2 */}
-        <div className="lg:col-span-7 flex flex-col gap-6">
+        <div className="lg:col-span-7 flex flex-col gap-6 min-h-0">
           {/* Card: Template Pesan */}
-          <Card className="shadow-sm">
-            <CardHeader className="bg-muted/10 pb-4">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <MessageSquare className="h-5 w-5 text-muted-foreground" />
-                Template Pesan
-              </CardTitle>
-              <CardDescription>
+          <Card className="shadow-sm shrink-0">
+            <CardHeader className="bg-muted/10 pb-3 border-b">
+              <div className="flex items-center justify-between gap-4">
+                <CardTitle className="flex items-center gap-2 text-lg shrink-0">
+                  <MessageSquare className="h-5 w-5 text-muted-foreground" />
+                  Template Pesan
+                </CardTitle>
+                <div className="flex items-center gap-2 flex-1 justify-end">
+                  {/* Dropdown: Load Template */}
+                  <select
+                    className="h-8 px-2 text-xs border border-input rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring max-w-[180px] truncate"
+                    value={savedDrafts.find(d => d.purpose === templatePurpose) ? templatePurpose : ""}
+                    onChange={(e) => handleLoadDraft(e.target.value)}
+                    title="Pilih template tersimpan"
+                  >
+                    <option value="" disabled>Pilih template...</option>
+                    {savedDrafts.map((d) => (
+                      <option key={d.purpose} value={d.purpose}>{d.purpose}</option>
+                    ))}
+                  </select>
+                  {/* Purpose / Judul input */}
+                  <Input
+                    className="h-8 text-xs w-[160px] bg-background"
+                    placeholder="Judul / Purpose..."
+                    value={templatePurpose}
+                    onChange={(e) => setTemplatePurpose(e.target.value)}
+                    title="Judul atau purpose dari template ini"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1.5">
                 Sesuaikan teks pesan yang akan dikirim ke setiap debitur.
-              </CardDescription>
+              </p>
             </CardHeader>
             <CardContent className="pt-4">
               <div className="mb-4 bg-muted/30 border border-border p-3 rounded-md text-sm">
@@ -264,7 +331,7 @@ export default function BroadcastPage() {
                 </div>
               </div>
               <Textarea
-                className="min-h-[220px] resize-none text-sm leading-relaxed"
+                className="min-h-[180px] resize-none text-sm leading-relaxed"
                 placeholder="Tulis pesan..."
                 value={messageTemplate}
                 onChange={(e) => setMessageTemplate(e.target.value)}
@@ -283,8 +350,9 @@ export default function BroadcastPage() {
               </div>
 
               <div className="flex items-center gap-2 w-full sm:w-auto">
-                <Button variant="outline" size="sm" className="gap-2 h-8 w-full sm:w-auto">
-                  <Save className="h-4 w-4" /> Simpan Draft
+                <Button variant="outline" size="sm" className="gap-2 h-8 w-full sm:w-auto" onClick={handleSaveDraft} disabled={isSavingDraft}>
+                  {isSavingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {isSavingDraft ? "Menyimpan..." : "Simpan Draft"}
                 </Button>
                 <Button
                   size="sm"
@@ -357,43 +425,58 @@ export default function BroadcastPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <ScrollArea className="h-[250px]">
+              <ScrollArea className="flex-1">
                 <div className="p-4 space-y-3">
                   {logs.length === 0 ? (
                     <div className="text-center text-muted-foreground text-xs py-10">Belum ada riwayat pengiriman.</div>
-                  ) : logs.map((log) => (
+                  ) : [...logs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((log, index) => (
                     <div
                       key={log.id}
-                      className="flex gap-3 justify-between items-start text-sm border-b pb-3 last:border-0 last:pb-0"
+                      className="flex gap-3 items-center text-sm border-b pb-3 last:border-0 last:pb-0 py-1"
                     >
-                      <div className="flex gap-3">
-                        <div className="mt-0.5">
+                      {/* Left Side: Numbering */}
+                      <div className="w-5 text-[10px] text-muted-foreground font-mono shrink-0">
+                        {logs.length - index}.
+                      </div>
+                      
+                      {/* Middle: Content */}
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className={
+                            log.status === "FAILED"
+                              ? "text-destructive font-medium truncate"
+                              : "text-foreground truncate"
+                          }
+                        >
+                          <span className="font-semibold text-xs">{log.debitur_nama}</span>: <span className="text-[10px] opacity-80">{log.status}</span>
+                        </p>
+                        {log.error_reason && (
+                          <p className="text-[10px] text-destructive opacity-80 mt-0.5 truncate italic">
+                            {log.error_reason}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Right Side: Time & Status Icon */}
+                      <div className="flex items-center gap-3 shrink-0">
+                        <p 
+                          className="text-[10px] text-muted-foreground whitespace-nowrap" 
+                          title={new Date(log.created_at).toLocaleString()}
+                        >
+                          {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                        <div className="w-4 flex justify-center">
                           {log.status === "SENT" && (
-                            <CheckCircle2 className="h-4 w-4 text-foreground/70" />
+                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
                           )}
                           {log.status === "FAILED" && (
-                            <XCircle className="h-4 w-4 text-destructive" />
+                            <XCircle className="h-3.5 w-3.5 text-destructive" />
                           )}
                           {log.status === "PENDING" && (
-                            <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 border-t-primary animate-spin" />
+                            <div className="h-3 w-3 rounded-full border-2 border-muted-foreground/30 border-t-primary animate-spin" />
                           )}
                         </div>
-                        <div>
-                          <p
-                            className={
-                              log.status === "FAILED"
-                                ? "text-destructive font-medium"
-                                : "text-foreground"
-                            }
-                          >
-                            Mengirim ke <span className="font-semibold">{log.debitur_nama}</span>: {log.status}
-                          </p>
-                          {log.error_reason && <p className="text-xs text-destructive opacity-80 mt-0.5">{log.error_reason}</p>}
-                        </div>
                       </div>
-                      <p className="text-xs text-muted-foreground whitespace-nowrap mt-0.5" title={new Date(log.created_at).toLocaleString()}>
-                        {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </p>
                     </div>
                   ))}
                 </div>
@@ -403,7 +486,7 @@ export default function BroadcastPage() {
         </div>
 
         {/* KOLOM KEDUA (Kanan) - List Debitur */}
-        <div className="lg:col-span-5">
+        <div className="lg:col-span-5 flex flex-col h-full min-h-0">
           <Card className="shadow-sm h-full flex flex-col">
             <CardHeader className="bg-muted/10 pb-4 border-b flex flex-row items-center justify-between">
               <div>
@@ -467,7 +550,7 @@ export default function BroadcastPage() {
               </div>
 
               {/* Table List Items */}
-              <ScrollArea className="h-[550px] flex-1">
+              <ScrollArea className="flex-1">
                 <div className="divide-y">
                   {filteredDebiturs.length > 0 ? (
                     filteredDebiturs.map((debitur) => (

@@ -24,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,7 +38,7 @@ import {
 
 import Papa from "papaparse";
 import { toast } from "sonner";
-import { getDebiturs, addDebitur, updateDebitur, deleteDebitur, bulkAddDebiturs } from "@/app/actions/debitur.actions";
+import { getDebiturs, addDebitur, updateDebitur, deleteDebitur, bulkAddDebiturs, bulkDeleteDebiturs } from "@/app/actions/debitur.actions";
 
 // Define the shape of our data matching Drizzle schema
 interface Debitur {
@@ -64,6 +65,8 @@ export default function DebiturPage() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -127,6 +130,30 @@ export default function DebiturPage() {
     return filteredData.slice(start, start + itemsPerPage);
   }, [filteredData, currentPage]);
 
+  // --- Handlers for Selection ---
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredData.length && filteredData.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredData.map((item) => item.id)));
+    }
+  };
+
+  const isAllSelected = filteredData.length > 0 && selectedIds.size === filteredData.length;
+  const isSomeSelected = selectedIds.size > 0 && !isAllSelected;
+
   const totalTunggakan = data.reduce((acc, curr) => acc + curr.tgk, 0);
   const totalSOPokok = data.reduce((acc, curr) => acc + curr.so_pokok, 0);
 
@@ -144,6 +171,20 @@ export default function DebiturPage() {
       toast.error(res.error || "Gagal menghapus data");
     }
     setDeleteId(null);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    
+    const res = await bulkDeleteDebiturs(Array.from(selectedIds));
+    if (res.success) {
+      toast.success(`Berhasil menghapus ${selectedIds.size} debitur`);
+      setSelectedIds(new Set());
+      fetchDebiturs();
+    } else {
+      toast.error(res.error || "Gagal menghapus data");
+    }
+    setIsBulkDeleteOpen(false);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -355,12 +396,35 @@ export default function DebiturPage() {
             </div>
             {searchTerm && <span className="text-sm text-muted-foreground ml-2 hidden sm:block">Ditemukan: {filteredData.length}</span>}
           </div>
+          {selectedIds.size > 0 && (
+            <div className="flex items-center gap-2 animate-in slide-in-from-top-2 duration-300">
+              <span className="text-sm font-medium text-primary bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
+                {selectedIds.size} Terpilih
+              </span>
+              <Button 
+                variant="destructive" 
+                size="sm" 
+                className="gap-2" 
+                onClick={() => setIsBulkDeleteOpen(true)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Hapus Terpilih
+              </Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto min-h-[300px]">
             <Table>
               <TableHeader className="bg-muted/30">
                 <TableRow>
+                  <TableHead className="w-[50px]">
+                    <Checkbox 
+                      checked={isAllSelected}
+                      onCheckedChange={toggleSelectAll}
+                      aria-label="Select all"
+                    />
+                  </TableHead>
                   <TableHead className="w-[150px]">No. Debitur</TableHead>
                   <TableHead>Nama & Agunan</TableHead>
                   <TableHead>No. WhatsApp</TableHead>
@@ -372,7 +436,7 @@ export default function DebiturPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                     <TableCell colSpan={6} className="h-48 text-center bg-muted/5">
+                     <TableCell colSpan={7} className="h-48 text-center bg-muted/5">
                         <Loader2 className="h-8 w-8 text-primary animate-spin mx-auto mb-2" />
                         <p className="text-sm text-muted-foreground">Memuat data dari database...</p>
                      </TableCell>
@@ -380,6 +444,13 @@ export default function DebiturPage() {
                 ) : paginatedData.length > 0 ? (
                   paginatedData.map((item) => (
                     <TableRow key={item.id} className="group hover:bg-muted/40 transition-colors [&:nth-child(even)]:bg-muted/10">
+                      <TableCell>
+                        <Checkbox 
+                          checked={selectedIds.has(item.id)}
+                          onCheckedChange={() => toggleSelect(item.id)}
+                          aria-label={`Select ${item.nama}`}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium text-xs font-mono">{item.no_debitur}</TableCell>
                       <TableCell>
                         <div className="font-semibold">{item.nama}</div>
@@ -412,7 +483,7 @@ export default function DebiturPage() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-48 text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="h-48 text-center text-muted-foreground">
                       <div className="flex flex-col items-center justify-center gap-2">
                          <FileSpreadsheet className="h-10 w-10 text-muted-foreground/30" />
                          <p>Belum ada data debitur ditemukan.</p>
@@ -649,6 +720,23 @@ export default function DebiturPage() {
             <AlertDialogCancel>Batal</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Hapus Data
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {/* --- BULK DELETE CONFIRMATION MODAL --- */}
+      <AlertDialog open={isBulkDeleteOpen} onOpenChange={setIsBulkDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus {selectedIds.size} Data Debitur?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tindakan ini tidak dapat dibatalkan. {selectedIds.size} data debitur yang dipilih akan dihapus dari Database secara permanen.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Hapus Semua yang Terpilih
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
