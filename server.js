@@ -42,9 +42,18 @@ app.prepare().then(() => {
   io.on("connection", (socket) => {
     console.log(`[Socket] Client terhubung: ${socket.id}`);
 
+    let stopRequested = false;
+
+    // Client meminta stop broadcast
+    socket.on("broadcast:stop", () => {
+      console.log(`[Broadcast] Stop diminta oleh client ${socket.id}`);
+      stopRequested = true;
+    });
+
     // Trigger broadcast dari browser
     socket.on("broadcast:start", async ({ targets }) => {
       const client = getClient();
+      stopRequested = false;
 
       if (!client || !client.info) {
         socket.emit("broadcast:error", "WhatsApp belum terkoneksi. Silakan scan QR terlebih dahulu.");
@@ -58,10 +67,29 @@ app.prepare().then(() => {
       let failed = 0;
 
       for (const target of targets) {
+        // Cek apakah stop diminta sebelum tiap pengiriman
+        if (stopRequested) {
+          console.log(`[Broadcast] Dihentikan oleh user. Terkirim: ${sent}/${targets.length}`);
+          io.emit("broadcast:stopped", { sent, failed, total: targets.length });
+          return;
+        }
+
         // ANTI-BAN: Delay acak 10-25 detik setiap pesan
         const delayMs = (Math.random() * 15 + 10) * 1000;
         console.log(`[Broadcast] Menunggu ${(delayMs / 1000).toFixed(1)}s sebelum kirim ke ${target.no_wa}...`);
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+        // Interruptible delay: cek stop setiap 500ms
+        const steps = Math.ceil(delayMs / 500);
+        for (let i = 0; i < steps; i++) {
+          if (stopRequested) break;
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+
+        if (stopRequested) {
+          console.log(`[Broadcast] Dihentikan saat delay. Terkirim: ${sent}/${targets.length}`);
+          io.emit("broadcast:stopped", { sent, failed, total: targets.length });
+          return;
+        }
 
         try {
           await client.sendMessage(`${target.no_wa}@c.us`, target.pesan);
@@ -88,6 +116,7 @@ app.prepare().then(() => {
 
     socket.on("disconnect", () => {
       console.log(`[Socket] Client putus: ${socket.id}`);
+      stopRequested = true; // bersihkan bila client disconnect
     });
   });
 

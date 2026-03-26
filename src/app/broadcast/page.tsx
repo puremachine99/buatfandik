@@ -16,8 +16,8 @@ import {
   Timer,
   Save,
   Smartphone,
-  QrCode,
-  Loader2
+  Loader2,
+  StopCircle,
 } from "lucide-react";
 
 import {
@@ -43,6 +43,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getDebiturs } from "@/app/actions/debitur.actions";
+import { bulkAddTagsToDebiturs } from "@/app/actions/debitur.actions";
 import { getBroadcastLogs, addBroadcastLogs, updateLogStatus } from "@/app/actions/broadcast.actions";
 import { getMessageTemplates, upsertMessageTemplate } from "@/app/actions/template.actions";
 import { useWhatsappSocket } from "@/hooks/use-whatsapp-socket";
@@ -63,6 +64,23 @@ export default function BroadcastPage() {
   const [logs, setLogs] = React.useState<any[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isBroadcasting, setIsBroadcasting] = React.useState(false);
+
+  // Tracks the current/last broadcast session for stop & tagging
+  const [broadcastSession, setBroadcastSession] = React.useState<{
+    targetIds: string[];
+    templateName: string;
+    total: number;
+  } | null>(null);
+
+  // History banners for "dihentikan" or "selesai"
+  const [stoppedSessions, setStoppedSessions] = React.useState<{
+    id: string;
+    type: "stopped" | "done";
+    sent: number;
+    total: number;
+    tag: string;
+    timestamp: Date;
+  }[]>([]);
   
   const fetchLogs = async () => {
     const res = await getBroadcastLogs();
@@ -145,7 +163,7 @@ export default function BroadcastPage() {
   const [filterTag, setFilterTag] = useState("ALL");
 
   // Real-time WhatsApp Socket hook
-  const { qrImage, waStatus, phoneNumber: livePhone, isBroadcasting: socketBroadcasting, startBroadcast, onLogUpdate } = useWhatsappSocket();
+  const { qrImage, waStatus, phoneNumber: livePhone, isBroadcasting: socketBroadcasting, startBroadcast, stopBroadcast, onLogUpdate, onBroadcastStopped, onBroadcastDone } = useWhatsappSocket();
   const isBotActive = waStatus === "READY";
   const phoneNumber = livePhone ?? (waStatus === "CONNECTING" ? "Menghubungkan..." : "Belum Login");
 
@@ -158,6 +176,86 @@ export default function BroadcastPage() {
     return unsub;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Helper: generate tag string  e.g. "26/03/2025 - Tagihan Default"
+  const buildBroadcastTag = (templateName: string) => {
+    const now = new Date();
+    const d = now.getDate().toString().padStart(2, "0");
+    const m = (now.getMonth() + 1).toString().padStart(2, "0");
+    const y = now.getFullYear();
+    return `${d}/${m}/${y} - ${templateName}`;
+  };
+
+  // Register broadcast stopped listener
+  React.useEffect(() => {
+    const unsub = onBroadcastStopped(async ({ sent, failed, total }) => {
+      if (!broadcastSession) return;
+      const tag = buildBroadcastTag(broadcastSession.templateName);
+
+      // Tag only the debiturs that were actually sent (first `sent` IDs — best effort)
+      if (sent > 0) {
+        const sentIds = broadcastSession.targetIds.slice(0, sent);
+        await bulkAddTagsToDebiturs(sentIds, tag);
+        // Refresh local debitur list
+        getDebiturs().then(res => {
+          if (res.success && res.data) {
+            setDebiturs(res.data.map(d => ({
+              id: d.id, nama: d.nama, agunan: d.agunan || "-",
+              tgk: Number(d.tgk), so_pokok: Number(d.so_pokok),
+              no_whatsapp: d.no_whatsapp, tags: d.tags || []
+            })));
+          }
+        });
+      }
+
+      setStoppedSessions(prev => [{
+        id: crypto.randomUUID(),
+        type: "stopped",
+        sent,
+        total,
+        tag,
+        timestamp: new Date(),
+      }, ...prev]);
+
+      toast.warning(`Broadcast dihentikan. ${sent}/${total} kontak terkirim.`);
+    });
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [broadcastSession]);
+
+  // Register broadcast done listener
+  React.useEffect(() => {
+    const unsub = onBroadcastDone(async ({ sent, failed, total }) => {
+      if (!broadcastSession) return;
+      const tag = buildBroadcastTag(broadcastSession.templateName);
+
+      if (sent > 0) {
+        await bulkAddTagsToDebiturs(broadcastSession.targetIds, tag);
+        getDebiturs().then(res => {
+          if (res.success && res.data) {
+            setDebiturs(res.data.map(d => ({
+              id: d.id, nama: d.nama, agunan: d.agunan || "-",
+              tgk: Number(d.tgk), so_pokok: Number(d.so_pokok),
+              no_whatsapp: d.no_whatsapp, tags: d.tags || []
+            })));
+          }
+        });
+      }
+
+      setStoppedSessions(prev => [{
+        id: crypto.randomUUID(),
+        type: "done",
+        sent,
+        total,
+        tag,
+        timestamp: new Date(),
+      }, ...prev]);
+
+      toast.success(`Broadcast selesai. ${sent}/${total} kontak terkirim.`);
+    });
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [broadcastSession]);
 
   // Derived Properties
   const allAvailableTags = Array.from(new Set(debiturs.flatMap((d) => d.tags))).sort();
@@ -353,64 +451,90 @@ export default function BroadcastPage() {
                   {isSavingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   {isSavingDraft ? "Menyimpan..." : "Simpan Draft"}
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={async () => {
-                    if (selectedIds.size === 0) {
-                      toast.warning("Pilih minimal 1 debitur untuk broadcast.");
-                      return;
-                    }
-                    if (!isBotActive) {
-                      toast.error("WhatsApp belum terkoneksi. Silakan Scan QR terlebih dahulu.");
-                      return;
-                    }
+                {/* Action Button: Stop / Scan QR / Mulai Broadcast */}
+                {socketBroadcasting ? (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => {
+                      stopBroadcast();
+                      toast.info("Menghentikan broadcast, mohon tunggu...");
+                    }}
+                    className="gap-2 h-8 w-full sm:w-auto animate-pulse"
+                  >
+                    <StopCircle className="h-4 w-4" /> Stop Broadcast
+                  </Button>
+                ) : !isBotActive ? (
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={() => setIsQROpen(true)}
+                    className="gap-2 h-8 w-full sm:w-auto bg-primary hover:bg-primary/90"
+                  >
+                    <ScanLine className="h-4 w-4" /> Hubungkan WhatsApp
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      if (selectedIds.size === 0) {
+                        toast.warning("Pilih minimal 1 debitur untuk broadcast.");
+                        return;
+                      }
+                      
+                      const targets = debiturs.filter(d => selectedIds.has(d.id));
 
-                    const targets = debiturs.filter(d => selectedIds.has(d.id));
+                      // 1. Buat log entries di DB dengan status PENDING
+                      const payload = targets.map(t => {
+                        let msg = messageTemplate;
+                        msg = msg.replace(/\{\{nama\}\}/g, t.nama);
+                        msg = msg.replace(/\{\{agunan\}\}/g, t.agunan);
+                        msg = msg.replace(/\{\{tgk\}\}/g, t.tgk.toString());
+                        msg = msg.replace(/\{\{so_pokok\}\}/g, t.so_pokok.toString());
+                        return { debitur_id: t.id, pesan: msg, status: "PENDING" as any };
+                      });
 
-                    // 1. Buat log entries di DB dengan status PENDING
-                    const payload = targets.map(t => {
-                      let msg = messageTemplate;
-                      msg = msg.replace(/\{\{nama\}\}/g, t.nama);
-                      msg = msg.replace(/\{\{agunan\}\}/g, t.agunan);
-                      msg = msg.replace(/\{\{tgk\}\}/g, t.tgk.toString());
-                      msg = msg.replace(/\{\{so_pokok\}\}/g, t.so_pokok.toString());
-                      return { debitur_id: t.id, pesan: msg, status: "PENDING" as any };
-                    });
+                      const res = await addBroadcastLogs(payload);
+                      if (!res.success) {
+                        toast.error("Gagal membuat log broadcast.");
+                        return;
+                      }
 
-                    const res = await addBroadcastLogs(payload);
-                    if (!res.success) {
-                      toast.error("Gagal membuat log broadcast.");
-                      return;
-                    }
+                      await fetchLogs();
+                      const freshLogs = await getBroadcastLogs();
 
-                    await fetchLogs();
-                    const freshLogs = await getBroadcastLogs();
+                      // 2. Kirim ke WA Engine via Socket.io
+                      const socketTargets = targets.map((t) => {
+                        const matchingLog = freshLogs.data?.find(l =>
+                          l.debitur_id === t.id && l.status === "PENDING"
+                        );
+                        let msg = messageTemplate;
+                        msg = msg.replace(/\{\{nama\}\}/g, t.nama);
+                        msg = msg.replace(/\{\{agunan\}\}/g, t.agunan);
+                        msg = msg.replace(/\{\{tgk\}\}/g, t.tgk.toString());
+                        msg = msg.replace(/\{\{so_pokok\}\}/g, t.so_pokok.toString());
+                        return {
+                          log_id: matchingLog?.id ?? t.id,
+                          no_wa: (t as any).no_whatsapp ?? "",
+                          pesan: msg,
+                        };
+                      });
 
-                    // 2. Kirim ke WA Engine via Socket.io
-                    const socketTargets = targets.map((t, i) => {
-                      const matchingLog = freshLogs.data?.find(l =>
-                        l.debitur_id === t.id && l.status === "PENDING"
-                      );
-                      let msg = messageTemplate;
-                      msg = msg.replace(/\{\{nama\}\}/g, t.nama);
-                      msg = msg.replace(/\{\{agunan\}\}/g, t.agunan);
-                      msg = msg.replace(/\{\{tgk\}\}/g, t.tgk.toString());
-                      msg = msg.replace(/\{\{so_pokok\}\}/g, t.so_pokok.toString());
-                      return {
-                        log_id: matchingLog?.id ?? t.id,
-                        no_wa: (t as any).no_whatsapp ?? "",
-                        pesan: msg,
-                      };
-                    });
+                      // 3. Simpan sesi broadcast untuk keperluan stop + tagging
+                      setBroadcastSession({
+                        targetIds: targets.map(t => t.id),
+                        templateName: templatePurpose || "Broadcast",
+                        total: targets.length,
+                      });
 
-                    startBroadcast(socketTargets);
-                    toast.success(`Broadcast ke ${targets.length} target dimulai. Lihat panel log.`);
-                  }}
-                  disabled={socketBroadcasting}
-                  className="gap-2 h-8 w-full sm:w-auto"
-                >
-                  <Send className="h-4 w-4" /> {socketBroadcasting ? "Mengirim..." : "Mulai Broadcast"}
-                </Button>
+                      startBroadcast(socketTargets);
+                      toast.success(`Broadcast ke ${targets.length} target dimulai. Lihat panel log.`);
+                    }}
+                    className="gap-2 h-8 w-full sm:w-auto"
+                  >
+                    <Send className="h-4 w-4" /> Mulai Broadcast
+                  </Button>
+                )}
               </div>
             </CardFooter>
           </Card>
@@ -426,7 +550,45 @@ export default function BroadcastPage() {
             <CardContent className="p-0">
               <ScrollArea className="flex-1">
                 <div className="p-4 space-y-3">
-                  {logs.length === 0 ? (
+
+                  {/* Stopped/Done Session Banners */}
+                  {stoppedSessions.map((session) => (
+                    <div
+                      key={session.id}
+                      className={`flex items-start gap-3 px-3 py-2.5 rounded-lg border text-xs ${
+                        session.type === "stopped"
+                          ? "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800"
+                          : "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800"
+                      }`}
+                    >
+                      <div className="mt-0.5 shrink-0">
+                        {session.type === "stopped" ? (
+                          <StopCircle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                        ) : (
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-semibold ${
+                          session.type === "stopped"
+                            ? "text-amber-800 dark:text-amber-300"
+                            : "text-emerald-800 dark:text-emerald-300"
+                        }`}>
+                          {session.type === "stopped" ? "Dihentikan" : "Selesai"},{" "}
+                          {session.sent}/{session.total} kontak terkirim
+                        </p>
+                        <p className="text-muted-foreground truncate mt-0.5" title={session.tag}>
+                          Tag: <span className="font-mono">{session.tag}</span>
+                        </p>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground shrink-0 whitespace-nowrap">
+                        {session.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    </div>
+                  ))}
+
+                  {/* Individual Log Entries */}
+                  {logs.length === 0 && stoppedSessions.length === 0 ? (
                     <div className="text-center text-muted-foreground text-xs py-10">Belum ada riwayat pengiriman.</div>
                   ) : [...logs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((log, index) => (
                     <div

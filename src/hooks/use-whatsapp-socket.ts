@@ -23,6 +23,12 @@ export interface BroadcastLogUpdate {
   reason?: string;
 }
 
+export interface BroadcastStoppedPayload {
+  sent: number;
+  failed: number;
+  total: number;
+}
+
 export function useWhatsappSocket() {
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [waStatus, setWaStatus] = useState<WAStatus>("CONNECTING");
@@ -67,9 +73,14 @@ export function useWhatsappSocket() {
       console.log(`[Broadcast] Dimulai, total: ${total}`);
     });
 
-    socket.on("broadcast:done", ({ sent, failed, total }: { sent: number; failed: number; total: number }) => {
+    socket.on("broadcast:done", ({ sent, failed, total }: BroadcastStoppedPayload) => {
       setIsBroadcasting(false);
       console.log(`[Broadcast] Selesai. Terkirim: ${sent}/${total}, Gagal: ${failed}`);
+    });
+
+    socket.on("broadcast:stopped", ({ sent, failed, total }: BroadcastStoppedPayload) => {
+      setIsBroadcasting(false);
+      console.log(`[Broadcast] Dihentikan. Terkirim: ${sent}/${total}`);
     });
 
     socket.on("broadcast:error", (msg: string) => {
@@ -92,10 +103,29 @@ export function useWhatsappSocket() {
     socketRef.current.emit("broadcast:start", { targets });
   };
 
+  const stopBroadcast = () => {
+    if (!socketRef.current) return;
+    socketRef.current.emit("broadcast:stop");
+  };
+
   const onLogUpdate = (cb: (update: BroadcastLogUpdate) => void) => {
     socketRef.current?.on("broadcast:log_update", cb);
     return () => {
       socketRef.current?.off("broadcast:log_update", cb);
+    };
+  };
+
+  const onBroadcastStopped = (cb: (payload: BroadcastStoppedPayload) => void) => {
+    socketRef.current?.on("broadcast:stopped", cb);
+    return () => {
+      socketRef.current?.off("broadcast:stopped", cb);
+    };
+  };
+
+  const onBroadcastDone = (cb: (payload: BroadcastStoppedPayload) => void) => {
+    socketRef.current?.on("broadcast:done", cb);
+    return () => {
+      socketRef.current?.off("broadcast:done", cb);
     };
   };
 
@@ -106,6 +136,9 @@ export function useWhatsappSocket() {
     loadingPercent,
     isBroadcasting,
     startBroadcast,
+    stopBroadcast,
     onLogUpdate,
+    onBroadcastStopped,
+    onBroadcastDone,
   };
 }

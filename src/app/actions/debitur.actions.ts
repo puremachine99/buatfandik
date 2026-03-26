@@ -69,6 +69,36 @@ export async function deleteDebitur(id: string) {
   }
 }
 
+export async function bulkAddTagsToDebiturs(ids: string[], tag: string) {
+  try {
+    const { inArray } = await import("drizzle-orm");
+    // Fetch current tags for the given ids
+    const rows = await db
+      .select({ id: debiturs.id, tags: debiturs.tags })
+      .from(debiturs)
+      .where(inArray(debiturs.id, ids));
+
+    // Update each one individually, merging the new tag
+    for (const row of rows) {
+      const currentTags: string[] = row.tags || [];
+      if (!currentTags.includes(tag)) {
+        const newTags = [...currentTags, tag];
+        await db
+          .update(debiturs)
+          .set({ tags: newTags })
+          .where(eq(debiturs.id, row.id));
+      }
+    }
+
+    revalidatePath("/debitur");
+    revalidatePath("/broadcast");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error bulk adding tags to debiturs:", error);
+    return { success: false, error: error.message || "Gagal menambahkan tag secara massal" };
+  }
+}
+
 export async function bulkDeleteDebiturs(ids: string[]) {
   try {
     const { inArray } = await import("drizzle-orm");
