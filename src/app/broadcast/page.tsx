@@ -263,7 +263,7 @@ export default function BroadcastPage() {
                 <div className="flex items-center gap-2 flex-1 justify-end">
                   {/* Dropdown: Load Template */}
                   <select
-                    className="h-8 px-2 text-xs border border-input rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring max-w-[180px] truncate"
+                    className="h-8 px-2 text-xs border border-input rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring max-w-[200px] truncate"
                     value={savedDrafts.find(d => d.purpose === templatePurpose) ? templatePurpose : ""}
                     onChange={(e) => handleLoadDraft(e.target.value)}
                     title="Pilih template tersimpan"
@@ -273,14 +273,6 @@ export default function BroadcastPage() {
                       <option key={d.purpose} value={d.purpose}>{d.purpose}</option>
                     ))}
                   </select>
-                  {/* Purpose / Judul input */}
-                  <Input
-                    className="h-8 text-xs w-[160px] bg-background"
-                    placeholder="Judul / Purpose..."
-                    value={templatePurpose}
-                    onChange={(e) => setTemplatePurpose(e.target.value)}
-                    title="Judul atau purpose dari template ini"
-                  />
                 </div>
               </div>
               <p className="text-xs text-muted-foreground mt-1.5">
@@ -350,6 +342,13 @@ export default function BroadcastPage() {
               </div>
 
               <div className="flex items-center gap-2 w-full sm:w-auto">
+                <Input
+                  className="h-8 text-xs w-full sm:w-[160px] bg-background"
+                  placeholder="Nama draft..."
+                  value={templatePurpose}
+                  onChange={(e) => setTemplatePurpose(e.target.value)}
+                  title="Judul atau purpose dari template ini"
+                />
                 <Button variant="outline" size="sm" className="gap-2 h-8 w-full sm:w-auto" onClick={handleSaveDraft} disabled={isSavingDraft}>
                   {isSavingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   {isSavingDraft ? "Menyimpan..." : "Simpan Draft"}
